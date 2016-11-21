@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">MyRTSPClient</string>
+    <string name="button_send">Send it</string>
+    <string name="play_local">play local h264 file</string>
+</resources>
