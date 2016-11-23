@@ -45,10 +45,11 @@ public class MainActivity extends AppCompatActivity {
     private final static int BufSize = 1024 * 16 * 50;
 
 
-    private final static String url2 = "rtsp://120.27.188.84:8888/record/$phoneapptest/1/123.sdp";
-    private final static String url3 = "rtsp://218.204.223.237:554/live/1/66251FC11353191F/e7ooqwcfbqjoo80j.sdp";
-    private final static String url1 = "rtsp://120.27.188.84:8888/realtime/$1234/1/realtime.sdp";
-    private final static String url4 = "rtsp://120.27.188.84:8888/testAfterHint.mp4";
+    private final static String url1 = "rtsp://120.26.86.124:8888/realtime/$leapmotorNo1/1/realtime.sdp";
+    private final static String url2 = "rtsp://120.26.86.124:8888/record/$leapmotorNo1/1/123.sdp";
+    private final static String url3 = "rtsp://120.27.188.84:8888/record/$leapmotorNo1/1/123.sdp";
+    private final static String url4 = "rtsp://120.27.188.84:8888/realtime/$1234/1/realtime.sdp";
+    //private final static String url4 = "rtsp://218.204.223.237:554/live/1/66251FC11353191F/e7ooqwcfbqjoo80j.sdp";
     private final static String Urls[] = new String[]{url1, url2, url3, url4};
     //Thread RTSPTask;
     static final boolean DEBUG = false;

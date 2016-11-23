@@ -433,6 +433,9 @@ public class RTSPClient {
         int FirstRTPSeq = -1;
         int CurrSeq = -1;
         int LastSeq = 0;
+
+        int TmpSeq = 0;
+
         //int NumOfRTPLost = 0;
         int NumOfRTPLost2 = 0;
         int i = 0;
@@ -456,7 +459,7 @@ public class RTSPClient {
             return false;
         }
 
-        FirstRTPSeq = CurrSeq = singleRTPPacket.getSeq();
+        TmpSeq = FirstRTPSeq = CurrSeq = singleRTPPacket.getSeq();
         LastSeq = CurrSeq - 1;
         //int NaluSize = 0;
         //while (NumOfRTPRead < NumOfRTPToRead || !singleRTPPacket.NaluIsComplete()) {
@@ -470,6 +473,10 @@ public class RTSPClient {
                 }
             }
 
+            if (TmpNumOfRTPRead % 1000 == 0) {
+                System.out.println("[Client] Packet loss probability: " + (CurrSeq - TmpSeq + 1 - 1000) * 100 / (CurrSeq - TmpSeq + 1) + "%");
+                TmpSeq = CurrSeq;
+            }
             if (LastSeq > CurrSeq) {
                 //NumOfRTPLost += LastSeq - FirstRTPSeq + 1 - TmpNumOfRTPRead;
                 //NumOfRTPLost = CurrSeq  - FirstRTPSeq;

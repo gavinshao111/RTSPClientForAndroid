@@ -7,6 +7,7 @@
     android:paddingLeft="0dp"
     android:paddingRight="0dp"
     android:paddingTop="0dp"
+    android:background="#3D3D3D"
     tools:context="com.leapmotor.gavin.myrtspclient.MainActivity">
 
     <!--<TextView-->
