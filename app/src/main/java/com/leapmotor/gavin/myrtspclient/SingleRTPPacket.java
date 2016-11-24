@@ -1,8 +1,11 @@
 package com.leapmotor.gavin.myrtspclient;
 
 
+import java.io.IOException;
 import java.io.InputStream;
+import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Created by gavin on 11/4/16.
@@ -139,8 +142,10 @@ public class SingleRTPPacket {
      * | embedded data length(2 bytes) | data |
      *
      * after this, RTPByteBuf is fill with RTP data without header, pos is at start of RTP Payload.
+     *
+     * return 1 when read time out.
      */
-    public int ReadNextRTPPacket(){
+    public int ReadNextRTPPacket() {
 
         if (null == is || null == RTPByteBuf || 0 == RTPByteBuf.limit())
             return -1;
@@ -206,6 +211,7 @@ public class SingleRTPPacket {
                 RTPByteBuf.position(embeddedDataLength);
                 RTPByteBuf.flip();
                 int rc = ParseRTPAndGetRTPPayload();
+
                 if (0 != rc) {
                     if (DEBUG)
                         System.out.printf("[WARN] ReadNextRTPPacket.ParseRTPAndGetRTPPayload fail, rc = %d\n\n", rc);
@@ -216,18 +222,13 @@ public class SingleRTPPacket {
                     System.out.println("[WARN] ReadNextRTPPacket: not a H264 bit stream, RTP payload type code: " + PT);
                     continue;   // we will ignore it, just get next packet.
                 }
+
                 break;
             }
             if (count > 0)
                 System.out.printf("[WARN] ReadNextRTPPacket: %d bytes ignored for waiting '$'.\n", count);
-
-//
-//            rc = GetNALUPayload();
-//            if (0 != rc) {
-//                if(DEBUG)
-//                    System.out.printf("[WARN] RTPReceiver.ReadNextRTPPacket.GetNALUPayload fail, rc = %d\n\n", rc);
-//                return 6;   // we will ignore it, just get next packet.
-//            }
+        } catch (SocketTimeoutException e) {
+            return 1;
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -290,6 +291,11 @@ public class SingleRTPPacket {
             if (RTPByteBuf.remaining() < LenOfPadding)
                 return -5;
             RTPByteBuf.limit(RTPByteBuf.limit() - LenOfPadding);
+        }
+
+        if (RTPByteBuf.capacity() - 12 <= RTPByteBuf.remaining()) {
+            System.out.println("[ParseRTPAndGetRTPPayload] RTPByteBuf.remaining is not correct: " + RTPByteBuf.remaining());
+            return -6;
         }
 
         return 0;
@@ -508,7 +514,7 @@ public class SingleRTPPacket {
             TypeArray[32]++;
 
 //        if (NaluTypeCode != 28)
-//            System.out.println("Num: "+NumOfRTPRead+" Type: " + NaluTypeCode + " M:" + M);
+            //System.out.println("[processSpecialHeader] Type: " + NaluTypeCode);
         switch (NaluTypeCode) {
             case 24:
             { // STAP-A
@@ -611,6 +617,17 @@ public class SingleRTPPacket {
             );
             return RTPByteBuf.remaining();
         }
+        else if (RTPByteBuf.capacity() - 12 < RTPByteBuf.remaining()){
+            System.out.println("[WARN] RTPByteBuf remaining error. Nothing to copy."
+                    + "\nframeSize: " + resultNALUSize
+                    + " Remaining: " + RTPByteBuf.remaining()
+                    + " Type: " + NaluTypeCode
+            );
+            return 0;
+
+        }
+
+
         return resultNALUSize;
     }
 

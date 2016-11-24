@@ -14,6 +14,7 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.Lock;
 
 /**
@@ -59,6 +60,7 @@ public class RTSPClient {
     private int count;
     private H264Player h264Player;
     private ByteBuffer VideoStartBuffer;
+    private static int Status;
 
     private enum EnumRTSPStatus {
         init, options, describe, setup, play, pause, teardown
@@ -93,6 +95,7 @@ public class RTSPClient {
                 super.handleMessage(msg);
             }
         };
+        Status = 0;
     }
 
     public Boolean Initializer() {
@@ -124,6 +127,7 @@ public class RTSPClient {
             MainActivity.SendMsg("Connecting to server...");
             socket = new Socket(ServerIP, ServerPort);
             socket.setReceiveBufferSize(500 * 1024);
+            //socket.setSoTimeout(8*1000);
             is = socket.getInputStream();
             br = new BufferedReader(new InputStreamReader(is));
             pw = new PrintWriter(socket.getOutputStream());
@@ -162,8 +166,9 @@ public class RTSPClient {
                     System.out.println("[WARN] connection lost.");
                     break;
                 }
+                Status = 1;
                 if (!ReadRTP())
-                    break;
+                    System.out.println("[WARN] ReadRTP not ok.");
 
                 // read user input
 //                char i = 'q';//(char) System.in.read();
@@ -174,7 +179,7 @@ public class RTSPClient {
 //                        return;
 //                    }
 //                }
-
+                Status = 4;
                 doTeardown();
                 sendAndRead(EnumRTSPStatus.teardown);
             } while (false);
@@ -364,25 +369,11 @@ public class RTSPClient {
 
             byte[] SPSasBytes = Base64.decode(Base64SPS, Base64.DEFAULT);
             byte[] PPSasBytes = Base64.decode(Base64PPS, Base64.DEFAULT);
-            if (WriteToFile) {
-                try {
-                    fos.write(NaluStartCode);
-                    fos.write(SPSasBytes);
-                    fos.write(NaluStartCode);
-                    fos.write(PPSasBytes);
-                    fos.flush();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    return false;
-                }
-            }
 
             VideoStartBuffer.put(NaluStartCode);
             VideoStartBuffer.put(SPSasBytes);
             VideoStartBuffer.put(NaluStartCode);
             VideoStartBuffer.put(PPSasBytes);
-            h264Player.pushData(VideoStartBuffer.array(), VideoStartBuffer.position());
-
         }
 
         return true;
@@ -408,6 +399,8 @@ public class RTSPClient {
 
             if (WriteToFile)
                 fos.close();
+
+            Status = 5;
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -415,86 +408,71 @@ public class RTSPClient {
 
     private boolean ReadRTP() {
         MainActivity.SendMsg("Video loading...");
+        try {
+            socket.setSoTimeout(5*1000);
+        } catch (Exception e){
+            e.printStackTrace();
+        }
+
         SingleRTPPacket.InitializeForClass(is, DEBUG);
         ByteBuffer RTPByteBuf;
         ByteBuffer NaluPLByteBuf;
         RTPByteBuf = ByteBuffer.allocate(RTP_SIZE);
         NaluPLByteBuf = ByteBuffer.allocate(RTP_SIZE);
-
-        ByteBuffer TmpBuffer = ByteBuffer.allocate(100*RTP_SIZE);
-
         SingleRTPPacket singleRTPPacket = new SingleRTPPacket(RTPByteBuf);
 
-        int NumOfRTPRead = 1;
-        int TmpNumOfRTPRead = 1;
-        int NumOfNaluWriteToBuf = 0;
-        int NumOfRTCP = 0;
-
-        int FirstRTPSeq = -1;
-        int CurrSeq = -1;
-        int LastSeq = 0;
-
+        int TmpNumOfRTPRead = 0;
+        int CurrSeq = 0;
         int TmpSeq = 0;
-
-        //int NumOfRTPLost = 0;
-        int NumOfRTPLost2 = 0;
-        int i = 0;
 
         int rc;
         int frameSize;
 
-        //int TotalSizeWriteToBuf = 0;
+        h264Player.pushData(VideoStartBuffer.array(), VideoStartBuffer.position());
+        if (WriteToFile) {
+            try {
+                fos.write(VideoStartBuffer.array());
+                fos.flush();
+            } catch (Exception e) {
+                try {
+                    fos.close();
+                }
+                catch (Exception ee){
+                    ee.printStackTrace();
+                }
 
+                e.printStackTrace();
+                MainActivity.SendMsg("Write to file fail.");
+                WriteToFile = false;
+            }
+        }
 
         System.out.println("[Client] Loop started.");
 
-
-        // 1488 1499 ... 20000 1477 1478 ... 20011 1488 1490
-
-        RTPByteBuf.clear();
-        NaluPLByteBuf.clear();
-        rc = singleRTPPacket.ReadNextRTPPacket();
-        if (0 > rc) {
-            System.out.printf("[WARN] RTPReceiver.ReadRTP.singleRTPPacket.ReadNextRTPPacket fail, rc = %d\n\n", rc);
-            return false;
-        }
-
-        TmpSeq = FirstRTPSeq = CurrSeq = singleRTPPacket.getSeq();
-        LastSeq = CurrSeq - 1;
-        //int NaluSize = 0;
-        //while (NumOfRTPRead < NumOfRTPToRead || !singleRTPPacket.NaluIsComplete()) {
         for (; !ExitCmdFromUI; TmpNumOfRTPRead++/*, NumOfRTPRead++*/) {
+            RTPByteBuf.clear();
+            NaluPLByteBuf.clear();
 
-            if (false) {
-                if (LastSeq < CurrSeq && LastSeq + 1 != CurrSeq) {
-                    NumOfRTPLost2 += CurrSeq - LastSeq - 1;
-                    if (CurrSeq - LastSeq - 1 > 10)
-                        System.out.println("[Client] More than 10 packets lost: " + LastSeq + ". Current: " + CurrSeq + ". Lost: " + (CurrSeq - LastSeq - 1));
-                }
+            Status = 2;
+            rc = singleRTPPacket.ReadNextRTPPacket();
+            Status = 3;
+            if (0 > rc) {
+                System.out.printf("[WARN] RTPReceiver.ReadRTP.singleRTPPacket.ReadNextRTPPacket fail, rc = %d\n\n", rc);
+                return false;
+            }
+            else if (1 == rc) {
+                MainActivity.SendMsg("The server is not responding.");
+                System.out.println("[INFO] The server is not responding.");
+                continue;
             }
 
-            if (TmpNumOfRTPRead % 1000 == 0) {
+            CurrSeq = singleRTPPacket.getSeq();
+
+            if (1000 == TmpNumOfRTPRead) {
+                TmpNumOfRTPRead = 0;
                 System.out.println("[Client] Packet loss probability: " + (CurrSeq - TmpSeq + 1 - 1000) * 100 / (CurrSeq - TmpSeq + 1) + "%");
                 TmpSeq = CurrSeq;
             }
-            if (LastSeq > CurrSeq) {
-                //NumOfRTPLost += LastSeq - FirstRTPSeq + 1 - TmpNumOfRTPRead;
-                //NumOfRTPLost = CurrSeq  - FirstRTPSeq;
-                System.out.println("[Client] Packet loss probability: " + (LastSeq - FirstRTPSeq + 1 - TmpNumOfRTPRead) * 100 / (LastSeq - FirstRTPSeq + 1) + "%");
-                FirstRTPSeq = CurrSeq;
-                TmpNumOfRTPRead = 1;
-            }
-
-//            if (NumOfRTPRead == 100){
-//                NumOfRTPRead = 0;
-//                TmpBuffer.flip();
-//                h264Player.pushData(TmpBuffer.array(), TmpBuffer.limit());
-//                System.out.println("[DEBUG] " + TmpBuffer.limit() + " bytes pushed.");
-//                TmpBuffer.clear();
-//            }
-
-
-
 
             rc = singleRTPPacket.processSpecialHeader();
             if (-1 == rc) {
@@ -504,8 +482,7 @@ public class RTSPClient {
 
             for (; ; ) {
                 frameSize = singleRTPPacket.nextEnclosedFrameSize();
-
-                if (frameSize == 0) {
+                if (0 == frameSize) {
                     //System.out.println("parse a RTP completed.");
                     break;
                 }
@@ -520,34 +497,26 @@ public class RTSPClient {
                 // if processSpecialHeader return 0, it means this rtp is a nal start part, we should add start code.
                 if (0 == rc) {
                     NaluPLByteBuf.put(NaluStartCode);
-//                        if(NaluSize > 16000)
-//                            System.out.println("[Client] Nalu size: " + NaluSize);
-//                        NaluSize = frameSize;
                 }
-//                    else if (28 == singleRTPPacket.getNaluTypeCode())
-//                        NaluSize += frameSize;
-
-                //System.out.printf("[Client] RTPByteBuf After StartCode: %x %x\n", RTPByteBuf.get(RTPByteBuf.position()), RTPByteBuf.get(RTPByteBuf.position()+1));
 
                 try {
                     RTPByteBuf.get(NaluPLByteBuf.array(), NaluPLByteBuf.position(), frameSize);
                 } catch (Exception e) {
-                    System.out.println("NaluPLByteBuf.remaining(): " + NaluPLByteBuf.remaining()
+                    System.out.println("NaluPLByteBuf.remaining: " + NaluPLByteBuf.remaining()
                             + "\nframeSize: " + frameSize
-                            + "\nRTPByteBuf.remaining(): " + RTPByteBuf.remaining());
+                            + "\nRTPByteBuf.remaining: " + RTPByteBuf.remaining()
+                            + "\nRTPByteBuf.capacity: " + RTPByteBuf.capacity()
+                    );
 
                     e.printStackTrace();
+                    continue;
                 }
                 //System.out.printf("[Client] NaluPLByteBuf After StartCode: %x %x\n", NaluPLByteBuf.get(NaluPLByteBuf.position()), NaluPLByteBuf.get(NaluPLByteBuf.position()+1));
                 NaluPLByteBuf.position(NaluPLByteBuf.position() + frameSize);
-                NumOfNaluWriteToBuf++;
             }
+
             NaluPLByteBuf.flip();
-
-            //TmpBuffer.put(NaluPLByteBuf);
             h264Player.pushData(NaluPLByteBuf.array(), NaluPLByteBuf.limit());
-            //System.out.println("[DEBUG] " + NaluPLByteBuf.limit() + " bytes pushed.");
-
 
             if (WriteToFile) {
                 try {
@@ -555,47 +524,20 @@ public class RTSPClient {
                     fos.flush();
 
                 } catch (Exception e) {
+                    try {
+                        fos.close();
+                    }
+                    catch (Exception ee){
+                        ee.printStackTrace();
+                    }
+
                     e.printStackTrace();
-                    return false;
+                    MainActivity.SendMsg("Write to file fail.");
+                    WriteToFile = false;
                 }
             }
-
-
-            RTPByteBuf.clear();
-            NaluPLByteBuf.clear();
-
-            rc = singleRTPPacket.ReadNextRTPPacket();
-            if (0 > rc) {
-                System.out.printf("[WARN] RTPReceiver.ReadRTP.singleRTPPacket.ReadNextRTPPacket fail, rc = %d\n\n", rc);
-                return false;
-            }
-
-            LastSeq = CurrSeq;
-            CurrSeq = singleRTPPacket.getSeq();
-
-
         }
 
-//        NumOfRTPLost += CurrSeq - FirstRTPSeq + 1 - TmpNumOfRTPRead;
-//
-//        System.out.println("[Client] RTP report:\n    Total number of RTP received: " + NumOfRTPRead
-//                        //+ "\nNumber of Nalu write to buf: " + NumOfNaluWriteToBuf
-//                        + "\n    RTP packets lost: " + NumOfRTPLost
-//                        + "\n    Packet loss probability: " + NumOfRTPLost * 100 / (NumOfRTPRead+NumOfRTPLost) + "%"
-////                        + "\n    RTP packets lost2: " + NumOfRTPLost2
-////                        + "\n    Packet loss probability2: " + NumOfRTPLost2 * 100 / NumOfRTPRead + "%"
-//
-////                + "\nNum Of FU-A RTP Write To Nalu Buf: %d\n"
-////                + "\nNum Of STAP-A RTP: %d\n"
-////                + "\nNum Of other RTP: %d\n" +
-////                            + "\nNum of RTCP: " + NumOfRTCP
-////                "Number of FU-A RTP which Order is Incorrect: %d\n"
-////                singleRTPPacket.getNumOfFUARTPWriteToNaluBuf(),
-////                singleRTPPacket.getNumOfSTAPARTP(),
-////                singleRTPPacket.getNumOfOtherRTP(),
-//
-////                singleRTPPacket.getNumOfRTPOrderIncorrect()
-//        );
 
         singleRTPPacket.PrintTypeCount();
 
@@ -609,6 +551,18 @@ public class RTSPClient {
         Message message = Message.obtain();
         message.what = 1;
         handler.sendMessage(message);
+    }
+
+    public static String GetStatus(){
+        switch (Status){
+            case 0: return "Init.";
+            case 1: return "RTSP Complete.";
+            case 2: return "Reading Next RTP Packet.";
+            case 3: return "Read RTP Packet complete.";
+            case 4: return "Play video done.";
+            case 5: return "Closed.";
+            default: return "";
+        }
     }
 
 }

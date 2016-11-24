@@ -20,6 +20,8 @@ import android.os.Bundle;
 import android.view.SurfaceView;
 import android.view.View;
 
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.ListView;
 import android.widget.Toast;
 
@@ -53,7 +55,7 @@ public class MainActivity extends AppCompatActivity {
     private final static String Urls[] = new String[]{url1, url2, url3, url4};
     //Thread RTSPTask;
     static final boolean DEBUG = false;
-    static final boolean WriteToFile = false;
+    static boolean WriteToFile = false;
 
     private RadioOnClick radioOnClick = new RadioOnClick(0);
     private ListView areaRadioListView;
@@ -90,6 +92,14 @@ public class MainActivity extends AppCompatActivity {
                 //StartTestThread();
                 VideoPlayerNeedExit = true;
                 RTSPClient.SendStopMsg();
+                Toast.makeText(MainActivity.this, RTSPClient.GetStatus(), Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        ((CheckBox) findViewById(R.id.CBSaveToFile)).setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener(){
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                WriteToFile = isChecked;
             }
         });
 

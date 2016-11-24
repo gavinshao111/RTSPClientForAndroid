@@ -8,6 +8,7 @@
     android:paddingRight="0dp"
     android:paddingTop="0dp"
     android:background="#3D3D3D"
+    android:keepScreenOn="true"
     tools:context="com.leapmotor.gavin.myrtspclient.MainActivity">
 
     <!--<TextView-->
@@ -50,5 +51,16 @@
         android:id="@+id/buttonStop"
         android:layout_alignTop="@+id/BtPlay"
         android:layout_toEndOf="@+id/BtPlay" />
+
+    <CheckBox
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Save to file"
+        android:id="@+id/CBSaveToFile"
+        android:layout_above="@+id/BtPlay"
+        android:layout_alignParentStart="true"
+        android:checked="false"
+        android:textColor="#FFFFFF"
+        android:textColorLink="#FF0000"/>
 
 </RelativeLayout>

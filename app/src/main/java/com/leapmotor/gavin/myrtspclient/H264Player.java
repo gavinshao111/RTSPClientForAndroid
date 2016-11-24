@@ -74,7 +74,7 @@ public class H264Player implements Callback
     private final static int VIDEO_WIDTH   = 1280;
     private final static int VIDEO_HEIGHT  = 720;
     private final static int TIME_INTERNAL = 40;
-    private final static int HEAD_OFFSET   = 512;
+    private final static int HEAD_OFFSET   = 2;
     private final static int BUFFER_LENGTH = 1024*1024;
 
     private MediaCodec mCodec;
@@ -132,6 +132,7 @@ public class H264Player implements Callback
         }
     }
 
+    int count = 0;
     private boolean onFrame(byte[] buf, int offset, int length)
     {
         ////Loger.DEBUG("onFrame start");
@@ -140,12 +141,14 @@ public class H264Player implements Callback
         int inputBufferIndex = mCodec.dequeueInputBuffer(1000);
 
         ////Loger.DEBUG("Frame index:" + inputBufferIndex);
+        //System.out.println("[H264Player] Frame index:" + inputBufferIndex);
         if (inputBufferIndex >= 0)
         {
             ByteBuffer inputBuffer = inputBuffers[inputBufferIndex];
             inputBuffer.clear();
             inputBuffer.put(buf, offset, length);
-            mCodec.queueInputBuffer(inputBufferIndex, 0, length, TIME_INTERNAL, 0);
+            mCodec.queueInputBuffer(inputBufferIndex, 0, length, count*TIME_INTERNAL, 0);
+            ++count;
         }
         else
         {
