@@ -28,8 +28,6 @@ import android.widget.Toast;
 import java.io.File;
 import java.io.FileInputStream;
 import java.nio.ByteBuffer;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -42,11 +40,6 @@ public class MainActivity extends AppCompatActivity {
     private final static int MilliSecondToSleep = 40;
 
 
-    // since RTP size is 1472, Nalu size can be 79603
-    // buf size for Buffer1 / Buffer2
-    private final static int BufSize = 1024 * 16 * 50;
-
-
     private final static String url1 = "rtsp://120.26.86.124:8888/realtime/$leapmotorNo1/1/realtime.sdp";
     private final static String url2 = "rtsp://120.26.86.124:8888/record/$leapmotorNo1/1/123.sdp";
     private final static String url3 = "rtsp://120.27.188.84:8888/record/$leapmotorNo1/1/123.sdp";
@@ -55,12 +48,14 @@ public class MainActivity extends AppCompatActivity {
     private final static String Urls[] = new String[]{url1, url2, url3, url4};
     //Thread RTSPTask;
     static final boolean DEBUG = false;
-    static boolean WriteToFile = false;
+    //static boolean WriteToFile = false;
 
     private RadioOnClick radioOnClick = new RadioOnClick(0);
     private ListView areaRadioListView;
+    private CheckBox CBSaveToFile;
+
     private H264Player h264Player;
-    private VideoPlayer videoPlayer;
+    private VideoReceiver videoReceiver;
 
     private boolean VideoPlayerNeedExit;
 
@@ -91,15 +86,18 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View v) {
                 //StartTestThread();
                 VideoPlayerNeedExit = true;
-                RTSPClient.SendStopMsg();
-                Toast.makeText(MainActivity.this, RTSPClient.GetStatus(), Toast.LENGTH_SHORT).show();
+                VideoReceiver.SendStopMsg();
+                Toast.makeText(MainActivity.this, VideoReceiver.GetStatus(), Toast.LENGTH_SHORT).show();
             }
         });
 
-        ((CheckBox) findViewById(R.id.CBSaveToFile)).setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener(){
+        CBSaveToFile = ((CheckBox) findViewById(R.id.CBSaveToFile));
+        CBSaveToFile.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener(){
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                WriteToFile = isChecked;
+                //WriteToFile = isChecked;
+                if (null != videoReceiver)
+                    videoReceiver.setSaveToFile(isChecked);
             }
         });
 
@@ -112,12 +110,15 @@ public class MainActivity extends AppCompatActivity {
         };
         VideoPlayerNeedExit = false;
 
+
+        videoReceiver = new VideoReceiver(localFileName, DEBUG, h264Player, CBSaveToFile.isChecked());
+
     }
 
     @Override
     public void onBackPressed() {
         VideoPlayerNeedExit = true;
-        RTSPClient.SendStopMsg();
+        VideoReceiver.SendStopMsg();
 
         super.onBackPressed();
     }
@@ -174,17 +175,16 @@ public class MainActivity extends AppCompatActivity {
                 Thread.currentThread().setName("Client");
                 System.out.println("[DEBUG] Thread " + Thread.currentThread().getName() + " created.");
 
-                RTSPClient Client = new RTSPClient(url, localFileName, DEBUG, WriteToFile, h264Player);
-                if (!Client.Initializer()) {
+
+                if (!videoReceiver.Initializer(url)) {
                     System.out.println("Initializer error. url: " + url);
                     SendMsg("Initializer error. url: " + url);
                     return;
                 }
 
-                Client.connect();
+                videoReceiver.connect();
                 System.out.println("RTSP Client existed.");
                 SendMsg("RTSP Client existed.");
-                VideoPlayerNeedExit = true;
             }
         };
         RTPReceiverThread.start();
@@ -240,14 +240,14 @@ public class MainActivity extends AppCompatActivity {
 //                    ByteBuffer TmpBuf = ByteBuffer.allocate(VideoBufSize);
 //                    int SizeToCopy;
 //                    //System.out.println("[Player] First time to get read buf, Lock2 got, waiting for Lock1.");
-//                    ReadBufRef = RTSPClient.SwapBuf(Buffer1, Buffer2, ReadBufRef, LockForBuf1, LockForBuf2);
+//                    ReadBufRef = VideoReceiver.SwapBuf(Buffer1, Buffer2, ReadBufRef, LockForBuf1, LockForBuf2);
 //                    for (; !VideoPlayerNeedExit; ) {
 //
 //                        if (VideoBufSize > ReadBufRef.remaining()) {
 //                            TmpBuf.put(ReadBufRef);
 //                            //h264Player.pushData(TmpBuf, ReadBufRef.remaining());
 //                            ReadBufRef.clear();
-//                            ReadBufRef = RTSPClient.SwapBuf(Buffer1, Buffer2, ReadBufRef, LockForBuf1, LockForBuf2);
+//                            ReadBufRef = VideoReceiver.SwapBuf(Buffer1, Buffer2, ReadBufRef, LockForBuf1, LockForBuf2);
 //                        }
 //                        SizeToCopy = TmpBuf.remaining();
 //                        ReadBufRef.get(TmpBuf.array(), TmpBuf.position(), SizeToCopy);
@@ -261,7 +261,7 @@ public class MainActivity extends AppCompatActivity {
 //                        //System.out.println("[Player] Release lock, play ok.");
 //                        //break;
 //                    }
-//                    RTSPClient.UnLock(Buffer1, Buffer2, ReadBufRef, LockForBuf1, LockForBuf2);
+//                    VideoReceiver.UnLock(Buffer1, Buffer2, ReadBufRef, LockForBuf1, LockForBuf2);
 //                    VideoPlayerNeedExit = false;
                 }
 

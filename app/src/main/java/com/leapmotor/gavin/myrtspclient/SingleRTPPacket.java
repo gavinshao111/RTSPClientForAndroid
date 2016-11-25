@@ -70,28 +70,6 @@ public class SingleRTPPacket {
     private long timestamp;
     private long SSRC;
 
-
-    public int getNumOfSTAPARTP() {
-        return NumOfSTAPARTP;
-    }
-
-    public int getNumOfFUARTPWriteToNaluBuf() {
-        return NumOfFUARTPWriteToNaluBuf;
-    }
-
-    private int NumOfSTAPARTP;
-    private int NumOfFUARTPWriteToNaluBuf;
-
-    public int getNumOfRTPOrderIncorrect() {
-        return NumOfRTPOrderIncorrect;
-    }
-
-    private int NumOfRTPOrderIncorrect;
-
-    public int getNumOfOtherRTP() {
-        return NumOfOtherRTP;
-    }
-
     private int NumOfOtherRTP;
     private long NumOfByteWrittenToBuf;
 
@@ -106,13 +84,10 @@ public class SingleRTPPacket {
         this.RTPByteBuf = RTPByteBuf;
         this.OrderCode = -1;
         this.LastOrderCode = EndOrderCode;
-        NumOfSTAPARTP = 0;
-        NumOfFUARTPWriteToNaluBuf = 0;
         NumOfOtherRTP = 0;
         SameOrderCount = 1;
         TEST = false;
         NumOfByteWrittenToBuf = 0;
-        NumOfRTPOrderIncorrect = 0;
     }
 
     public static void InitializeForClass(InputStream is, boolean DEBUG){
@@ -325,172 +300,6 @@ public class SingleRTPPacket {
      * this rule, flip NaluPLByteBuf after copy data from RTPByteBuf. so after call this
      * func, you can read data from NaluPLByteBuf without other operation.
      * */
-    public int WriteRTPPayloadToNaluBuf(ByteBuffer NaluPLByteBuf){
-        if (null == RTPByteBuf || !RTPByteBuf.hasRemaining() || null == NaluPLByteBuf || !NaluPLByteBuf.hasRemaining())
-            return -1;
-
-        int PosOfRTPPL = RTPByteBuf.position();
-        int RTPPLSize = RTPByteBuf.remaining();
-        byte Indicator = RTPByteBuf.get();
-        NaluTypeCode = (byte)(Indicator & 0x1f);
-
-        if (STAPATypeCode == NaluTypeCode){
-            boolean IgnoreStapA = false;
-            if(!IgnoreStapA) {
-                int i = 0;
-                byte tmp;
-
-                if (DEBUG) {
-                    System.out.printf("[DEBUG] Get STAP-A Nalu, RTP PL Size = %d\n", RTPPLSize);
-                    for (; i < RTPPLSize; i++) {
-                        tmp = RTPByteBuf.get(i + PosOfRTPPL);
-                        System.out.printf("%d %x, ", i + 12, tmp);
-                    }
-                    System.out.println("\nseq: " + seq);
-                }
-                short count = 0;
-                int LenOfNaluPL;
-                boolean WriteSuccessful = false;
-
-                for (; ; count++) {
-
-                    if (3 < RTPByteBuf.remaining()) {
-
-                        LenOfNaluPL = RTPByteBuf.getShort() & 0xffff;
-
-                        if (RTPByteBuf.remaining() < LenOfNaluPL || LenOfNaluPL <= 0) {
-                            WriteSuccessful = false;
-                            System.out.printf("[WARN] WriteRTPPayloadToNaluBuf: get LenOfNaluPL incorrect. " +
-                                    "LenOfNaluPL = %d, RTPByteBuf.remaining = %d, current position = %d\n",
-                                    LenOfNaluPL, RTPByteBuf.remaining(), RTPByteBuf.position());
-                        }
-                        // we need increase buffer size of NaluPLByteBuf.
-                        else if (NaluPLByteBuf.remaining() < LenOfNaluPL) {
-                            System.out.printf("[ERROR] WriteRTPPayloadToNaluBuf: NaluPLByteBuf is too small. " +
-                                    "NaluPLByteBuf.remaining = %d, LenOfNaluPL = %d\n",
-                                    NaluPLByteBuf.remaining(), LenOfNaluPL);
-                            return -2;
-                        }
-
-                        NaluPLByteBuf.put(NaluStartCode);
-                        // copy NALU Payload to NaluPLByteBuf.
-                        // LenOfNaluPL including NALU header, so copy LenOfNaluPL to NaluPLByteBuf
-                        RTPByteBuf.get(NaluPLByteBuf.array(), NaluPLByteBuf.position(), LenOfNaluPL);
-                        NaluPLByteBuf.position(NaluPLByteBuf.position() + LenOfNaluPL);
-                        WriteSuccessful = true;
-
-                    } else {
-                        if (RTPByteBuf.remaining() != 0) {
-                            WriteSuccessful = false;
-                            System.out.println("[WARN] WriteRTPPayloadToNaluBuf: STAP-A data format error.");
-                        }
-
-                        break;
-                    }
-                }
-
-                if (WriteSuccessful)
-                    NumOfSTAPARTP++;
-
-                if (DEBUG)
-                    System.out.printf("[DEBUG] WriteRTPPayloadToNaluBuf: get %d STAP-A NALUs in a RTP packet.\n", count);
-            }
-            else
-                NumOfSTAPARTP++;
-        }
-        else if(FUATypeCode == NaluTypeCode) {
-            byte FUAHeader = RTPByteBuf.get();
-            OrderCode = (byte) (FUAHeader >> 6 & 3);
-
-
-            if (TEST) {
-//                if (OrderCode == LastOrderCode) {
-//                    SameOrderCount++;
-//
-//                }
-//                else {
-//                    System.out.printf("%d\n", SameOrderCount);
-//                    System.out.printf("%c ", GetOrderChar());
-//                    SameOrderCount = 1;
-//                    LastOrderCode = OrderCode;
-//                }
-                System.out.println("seq: "+ seq + ", M: " + M + " Order: " + GetOrderChar(OrderCode));
-                NumOfFUARTPWriteToNaluBuf++;
-            }
-            else{
-                // If order is incorrect, we ignore this packet. Nothing written to Nalu PL Byte Buf.
-                if (IsOrderCorrect()) {
-                    if (StartOrderCode == OrderCode) {
-                        byte NaluHeader = (byte) ((Indicator & 0xe0) | (FUAHeader & 0x1f));
-
-                        NaluPLByteBuf.put(NaluStartCode);
-                        NaluPLByteBuf.put(NaluHeader);
-                        //NumOfByteWrittenToBuf += 4;
-
-                    }
-                    // copy NALU data to NaluPLByteBuf.
-                    if (RTPByteBuf.remaining() > NaluPLByteBuf.remaining()) {
-                        System.out.println("[ERROR] WriteRTPPayloadToNaluBuf: NaluPLByteBuf is too small.");
-                        return -3;
-                    }
-
-                    int tmpRemaining = RTPByteBuf.remaining();
-                    RTPByteBuf.get(NaluPLByteBuf.array(), NaluPLByteBuf.position(), tmpRemaining);
-                    NaluPLByteBuf.position(NaluPLByteBuf.position() + tmpRemaining);
-
-                    NumOfFUARTPWriteToNaluBuf++;
-                    //NumOfByteWrittenToBuf += 4;
-                } else if (true) {
-                    NumOfRTPOrderIncorrect++;
-                    System.out.printf("[WARN] WriteRTPPayloadToNaluBuf: Incorrect order, current order: %c, last order: %c, seq: %d\n", GetOrderChar(OrderCode), GetOrderChar(LastOrderCode), seq);
-
-                }
-                LastOrderCode = OrderCode;
-            }
-        }
-        else {
-            NumOfOtherRTP++;
-            //System.out.printf("[INFO] WriteRTPPayloadToNaluBuf: Type %d will be ignore.\n", NaluTypeCode);
-        }
-
-        NaluPLByteBuf.flip();
-
-        return 0;
-    }
-
-
-    public boolean NaluIsComplete(){
-        return (FUATypeCode != NaluTypeCode || OrderCode == EndOrderCode || M);
-    }
-
-    /**
-     * expect Start -> (Mid -> ... -> Mid -> )End -> Start -> ... -> End
-     * */
-    private boolean IsOrderCorrect(){
-
-        // Current RTP Packet is the first Packet.
-        if (StartOrderCode == OrderCode)
-            return (EndOrderCode == LastOrderCode);
-
-        if (MidOrderCode == OrderCode)
-            return (StartOrderCode == LastOrderCode || MidOrderCode == LastOrderCode);
-
-        if (EndOrderCode == OrderCode)
-            return (StartOrderCode == LastOrderCode || MidOrderCode == LastOrderCode);
-
-        return false;
-    }
-    private char GetOrderChar(int OrderCode){
-        if(OrderCode == StartOrderCode)
-            return 'S';
-        else if(OrderCode == MidOrderCode)
-            return 'M';
-        else if(OrderCode == EndOrderCode)
-            return 'E';
-        else
-            return 'N';
-    }
-
 
 
     /**

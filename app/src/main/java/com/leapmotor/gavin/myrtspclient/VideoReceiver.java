@@ -14,13 +14,11 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.nio.ByteBuffer;
-import java.util.concurrent.TimeoutException;
-import java.util.concurrent.locks.Lock;
 
 /**
  * Created by gavin on 11/4/16.
  */
-public class RTSPClient {
+public class VideoReceiver {
 
     private StringBuffer buf;
 
@@ -37,7 +35,12 @@ public class RTSPClient {
     private String RTSPUrl;
     private String ServerIP;
     private int ServerPort;
-    private boolean WriteToFile;
+
+    public void setSaveToFile(boolean saveToFile) {
+        SaveToFile = saveToFile;
+    }
+
+    private boolean SaveToFile;
     private boolean DEBUG;
     //private StringBuilder LogBuffer;
     static private Handler handler;
@@ -73,15 +76,16 @@ public class RTSPClient {
     /* done
     RTSPUrl is like rtsp://ip:8888/record/$carId/1/123.sdp
     */
-    public RTSPClient(String RTSPUrl, String fileName, boolean DEBUG, boolean WriteToFile, H264Player h264Player) {
-        this.RTSPUrl = RTSPUrl.trim();
+    public VideoReceiver(String fileName, boolean DEBUG, H264Player h264Player, boolean SaveToFile) {
+
         this.fileName = fileName;
         //this.handler = handler;
         this.DEBUG = DEBUG;
-        this.WriteToFile = WriteToFile;
-        this.h264Player = h264Player;
 
-        ExitCmdFromUI = false;
+        this.h264Player = h264Player;
+        this.SaveToFile = SaveToFile;
+
+
         buf = new StringBuffer(STRING_BUFFER_SIZE);
         handler = new Handler(Looper.getMainLooper()){
             @Override
@@ -98,21 +102,23 @@ public class RTSPClient {
         Status = 0;
     }
 
-    public Boolean Initializer() {
+    public Boolean Initializer(String RTSPUrl) {
         try {
+            ExitCmdFromUI = false;
+            this.RTSPUrl = RTSPUrl.trim();
             int ColonIndexAfterIp = -1;
             int SlashIndexAfterPort = -1;
-            if (!RTSPUrl.startsWith("rtsp://"))
+            if (!this.RTSPUrl.startsWith("rtsp://"))
                 return false;
 
-            if (-1 == (ColonIndexAfterIp = RTSPUrl.indexOf(':', 7)))
+            if (-1 == (ColonIndexAfterIp = this.RTSPUrl.indexOf(':', 7)))
                 return false;
-            ServerIP = RTSPUrl.substring(7, ColonIndexAfterIp);
+            ServerIP = this.RTSPUrl.substring(7, ColonIndexAfterIp);
 
-            if (-1 == (SlashIndexAfterPort = RTSPUrl.indexOf('/', ColonIndexAfterIp)))
+            if (-1 == (SlashIndexAfterPort = this.RTSPUrl.indexOf('/', ColonIndexAfterIp)))
                 return false;
 
-            ServerPort = Integer.parseInt(RTSPUrl.substring(ColonIndexAfterIp + 1, SlashIndexAfterPort));
+            ServerPort = Integer.parseInt(this.RTSPUrl.substring(ColonIndexAfterIp + 1, SlashIndexAfterPort));
             seq = 1;
 
             return true;
@@ -133,7 +139,7 @@ public class RTSPClient {
             pw = new PrintWriter(socket.getOutputStream());
             VideoStartBuffer = ByteBuffer.allocate(1024);
 
-            if (WriteToFile) {
+            if (true) {
                 file = new File(Environment.getExternalStorageDirectory(), fileName);
                 if (file.exists()) {
                     file.delete();
@@ -170,15 +176,6 @@ public class RTSPClient {
                 if (!ReadRTP())
                     System.out.println("[WARN] ReadRTP not ok.");
 
-                // read user input
-//                char i = 'q';//(char) System.in.read();
-//                if ('p' == i) {
-//                    doPause();
-//                    if (!sendAndRead(EnumRTSPStatus.pause)) {
-//                        close();
-//                        return;
-//                    }
-//                }
                 Status = 4;
                 doTeardown();
                 sendAndRead(EnumRTSPStatus.teardown);
@@ -397,7 +394,7 @@ public class RTSPClient {
             is.close();
             socket.close();
 
-            if (WriteToFile)
+            if (true)
                 fos.close();
 
             Status = 5;
@@ -429,7 +426,7 @@ public class RTSPClient {
         int frameSize;
 
         h264Player.pushData(VideoStartBuffer.array(), VideoStartBuffer.position());
-        if (WriteToFile) {
+        if (true) {
             try {
                 fos.write(VideoStartBuffer.array());
                 fos.flush();
@@ -443,13 +440,14 @@ public class RTSPClient {
 
                 e.printStackTrace();
                 MainActivity.SendMsg("Write to file fail.");
-                WriteToFile = false;
+                SaveToFile = false;
             }
         }
 
         System.out.println("[Client] Loop started.");
 
         for (; !ExitCmdFromUI; TmpNumOfRTPRead++/*, NumOfRTPRead++*/) {
+
             RTPByteBuf.clear();
             NaluPLByteBuf.clear();
 
@@ -518,7 +516,7 @@ public class RTSPClient {
             NaluPLByteBuf.flip();
             h264Player.pushData(NaluPLByteBuf.array(), NaluPLByteBuf.limit());
 
-            if (WriteToFile) {
+            if (SaveToFile) {
                 try {
                     fos.write(NaluPLByteBuf.array(), NaluPLByteBuf.position(), NaluPLByteBuf.remaining());
                     fos.flush();
@@ -533,7 +531,7 @@ public class RTSPClient {
 
                     e.printStackTrace();
                     MainActivity.SendMsg("Write to file fail.");
-                    WriteToFile = false;
+                    SaveToFile = false;
                 }
             }
         }
