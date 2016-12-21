@@ -119,6 +119,7 @@ public class SingleRTPPacket {
      * after this, RTPByteBuf is fill with RTP data without header, pos is at start of RTP Payload.
      *
      * return 1 when read time out.
+     * return 2 when read to end.
      */
     public int ReadNextRTPPacket() {
 
@@ -127,7 +128,7 @@ public class SingleRTPPacket {
 
         try {
             int count = 0;
-            short c;
+            int c;
             short d;
             short channelNumber;
             int curBytesRead;
@@ -135,8 +136,10 @@ public class SingleRTPPacket {
             for(;;) {
                 curBytesRead = 0;
 
-                c = (short)is.read();
-                if (((short) '$') != c) {
+                c = is.read();
+                if (((int) '$') != c) {
+                    if (-1 == c)
+                        return 2;
                     //System.out.printf("[WARN] first byte is not '$', it is %d\n", c);
                     count++;
                     continue;

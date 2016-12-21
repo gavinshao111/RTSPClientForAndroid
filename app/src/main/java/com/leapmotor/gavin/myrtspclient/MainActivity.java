@@ -10,6 +10,7 @@
 package com.leapmotor.gavin.myrtspclient;
 
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.os.Environment;
 import android.os.Handler;
@@ -40,12 +41,16 @@ public class MainActivity extends AppCompatActivity {
     private final static int MilliSecondToSleep = 40;
 
 
-    private final static String url1 = "rtsp://120.26.86.124:8888/realtime/$leapmotorNo1/1/realtime.sdp";
-    private final static String url2 = "rtsp://120.26.86.124:8888/record/$leapmotorNo1/1/123.sdp";
-    private final static String url3 = "rtsp://120.27.188.84:8888/record/$leapmotorNo1/1/123.sdp";
-    private final static String url4 = "rtsp://120.27.188.84:8888/realtime/$1234/1/realtime.sdp";
+    private final static String url1 = "rtsp://120.26.86.124:8888/realtime/leapmotorNo1/1/realtime.sdp";
+    private final static String url2 = "rtsp://120.26.86.124:8888/record/leapmotorNo1/1/123.sdp";
+    private final static String url3 = "rtsp://120.26.86.124:8888/realtime/1234/1/realtime.sdp";
+    //private final static String url4 = "rtsp://120.27.188.84:8888/record/leapmotorNo1/1/123.sdp";
+
+    private final static String url4 = "rtsp://120.27.188.84:8888/record/leapmotorNo1/1/123.sdp";
+
+    private final static String url5 = "rtsp://120.27.188.84:8888/realtime/1234/1/realtime.sdp";
     //private final static String url4 = "rtsp://218.204.223.237:554/live/1/66251FC11353191F/e7ooqwcfbqjoo80j.sdp";
-    private final static String Urls[] = new String[]{url1, url2, url3, url4};
+    private final static String Urls[] = new String[]{url1, url2, url3, url4, url5};
     //Thread RTSPTask;
     static final boolean DEBUG = false;
     //static boolean WriteToFile = false;
@@ -62,6 +67,8 @@ public class MainActivity extends AppCompatActivity {
     private Thread RTPReceiverThread;
     private Thread VideoPlayerThread;
 
+    //private MyDBHelper myDBHelper;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -73,7 +80,6 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.play_local).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                System.out.println("[DEBUG] play_local button clicked.");
                 if (null != VideoPlayerThread && VideoPlayerThread.isAlive())
                     return;
 
@@ -84,7 +90,6 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.buttonStop).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                //StartTestThread();
                 VideoPlayerNeedExit = true;
                 VideoReceiver.SendStopMsg();
                 Toast.makeText(MainActivity.this, VideoReceiver.GetStatus(), Toast.LENGTH_SHORT).show();
@@ -95,9 +100,8 @@ public class MainActivity extends AppCompatActivity {
         CBSaveToFile.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener(){
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                //WriteToFile = isChecked;
                 if (null != videoReceiver)
-                    videoReceiver.setSaveToFile(isChecked);
+                    videoReceiver.StartOrStopRecord();
             }
         });
 
@@ -111,7 +115,9 @@ public class MainActivity extends AppCompatActivity {
         VideoPlayerNeedExit = false;
 
 
-        videoReceiver = new VideoReceiver(localFileName, DEBUG, h264Player, CBSaveToFile.isChecked());
+        videoReceiver = new VideoReceiver(h264Player);
+
+        //myDBHelper = new MyDBHelper(this, "gavin.db", 1);
 
     }
 
@@ -172,9 +178,8 @@ public class MainActivity extends AppCompatActivity {
     private void StartRTSPClient(final String url) {
         RTPReceiverThread = new Thread() {
             public void run() {
-                Thread.currentThread().setName("Client");
+                Thread.currentThread().setName("videoReceiver");
                 System.out.println("[DEBUG] Thread " + Thread.currentThread().getName() + " created.");
-
 
                 if (!videoReceiver.Initializer(url)) {
                     System.out.println("Initializer error. url: " + url);
@@ -271,32 +276,5 @@ public class MainActivity extends AppCompatActivity {
             //h264Player.pushData(src, src.length);
         }
 
-    }
-
-    public void StartTestThread() {
-        new Thread() {
-            @Override
-            public void run() {
-
-                Message message;
-
-                StringBuilder LogBuffer = new StringBuilder(2000);
-
-                message = Message.obtain();
-                message.obj = LogBuffer;
-                LogBuffer.append("123");
-                handler.sendMessage(message);
-
-                try {
-                    Thread.sleep(2000);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-
-                SendMsg("SendMsgToUI1");
-                SendMsg("SendMsgToUI2");
-
-            }
-        }.start();
     }
 }

@@ -9,11 +9,14 @@ import android.util.Base64;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 /**
  * Created by gavin on 11/4/16.
@@ -27,18 +30,10 @@ public class VideoReceiver {
     private InputStream is;
     PrintWriter pw;
 
-    File file;
-    //FileWriter fw;
-    FileOutputStream fos;
-    String fileName;
-
+    private FileOutputStream fos;
     private String RTSPUrl;
     private String ServerIP;
     private int ServerPort;
-
-    public void setSaveToFile(boolean saveToFile) {
-        SaveToFile = saveToFile;
-    }
 
     private boolean SaveToFile;
     private boolean DEBUG;
@@ -76,14 +71,10 @@ public class VideoReceiver {
     /* done
     RTSPUrl is like rtsp://ip:8888/record/$carId/1/123.sdp
     */
-    public VideoReceiver(String fileName, boolean DEBUG, H264Player h264Player, boolean SaveToFile) {
-
-        this.fileName = fileName;
-        //this.handler = handler;
-        this.DEBUG = DEBUG;
+    public VideoReceiver(H264Player h264Player) {
 
         this.h264Player = h264Player;
-        this.SaveToFile = SaveToFile;
+        this.SaveToFile = false;
 
 
         buf = new StringBuffer(STRING_BUFFER_SIZE);
@@ -128,6 +119,30 @@ public class VideoReceiver {
         }
     }
 
+    public void StartOrStopRecord() {
+        try {
+            if (SaveToFile){
+                fos.close();
+            }
+            else {
+                String fileName = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date()) + ".h264";
+                File file = new File(Environment.getExternalStorageDirectory() + "/leapmotor/video", fileName);
+                file.createNewFile();
+                fos = new FileOutputStream(file, true);
+                fos.write(VideoStartBuffer.array());
+                fos.flush();
+
+            }
+
+            SaveToFile = !SaveToFile;
+
+
+        }
+        catch (IOException ioe) {
+            ioe.printStackTrace();
+        }
+    }
+
     public void connect() {
         try {
             MainActivity.SendMsg("Connecting to server...");
@@ -139,16 +154,15 @@ public class VideoReceiver {
             pw = new PrintWriter(socket.getOutputStream());
             VideoStartBuffer = ByteBuffer.allocate(1024);
 
-            if (true) {
-                file = new File(Environment.getExternalStorageDirectory(), fileName);
-                if (file.exists()) {
-                    file.delete();
-                }
-                file.createNewFile();
-//            fw = new FileWriter(file, true);
+//            if (true) {
+//                file = new File(Environment.getExternalStorageDirectory(), fileName);
+//                if (file.exists()) {
+//                    file.delete();
+//                }
+//                file.createNewFile();
 
-                fos = new FileOutputStream(file, true);
-            }
+//                fos = new FileOutputStream(file, true);
+//            }
             //RTSPStatus = EnumRTSPStatus.init;
 
             do {
@@ -393,10 +407,7 @@ public class VideoReceiver {
             pw.close();
             is.close();
             socket.close();
-
-            if (true)
-                fos.close();
-
+            fos.close();
             Status = 5;
         } catch (Exception e) {
             e.printStackTrace();
@@ -426,23 +437,7 @@ public class VideoReceiver {
         int frameSize;
 
         h264Player.pushData(VideoStartBuffer.array(), VideoStartBuffer.position());
-        if (true) {
-            try {
-                fos.write(VideoStartBuffer.array());
-                fos.flush();
-            } catch (Exception e) {
-                try {
-                    fos.close();
-                }
-                catch (Exception ee){
-                    ee.printStackTrace();
-                }
 
-                e.printStackTrace();
-                MainActivity.SendMsg("Write to file fail.");
-                SaveToFile = false;
-            }
-        }
 
         System.out.println("[Client] Loop started.");
 
@@ -462,6 +457,11 @@ public class VideoReceiver {
                 MainActivity.SendMsg("The server is not responding.");
                 System.out.println("[INFO] The server is not responding.");
                 continue;
+            }
+            else if (2 == rc){
+                MainActivity.SendMsg("Read to end.");
+                System.out.println("[INFO] Read to end.");
+                return true;
             }
 
             CurrSeq = singleRTPPacket.getSeq();
