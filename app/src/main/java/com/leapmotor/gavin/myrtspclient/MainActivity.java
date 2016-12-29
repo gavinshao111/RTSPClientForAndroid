@@ -91,8 +91,8 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 VideoPlayerNeedExit = true;
-                VideoReceiver.SendStopMsg();
-                Toast.makeText(MainActivity.this, VideoReceiver.GetStatus(), Toast.LENGTH_SHORT).show();
+                videoReceiver.SendStopMsg();
+                Toast.makeText(MainActivity.this, videoReceiver.GetStatus(), Toast.LENGTH_SHORT).show();
             }
         });
 
@@ -124,7 +124,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onBackPressed() {
         VideoPlayerNeedExit = true;
-        VideoReceiver.SendStopMsg();
+        videoReceiver.SendStopMsg();
 
         super.onBackPressed();
     }
@@ -181,7 +181,7 @@ public class MainActivity extends AppCompatActivity {
                 Thread.currentThread().setName("videoReceiver");
                 System.out.println("[DEBUG] Thread " + Thread.currentThread().getName() + " created.");
 
-                if (!videoReceiver.Initializer(url)) {
+                if (!videoReceiver.Initialize(url)) {
                     System.out.println("Initializer error. url: " + url);
                     SendMsg("Initializer error. url: " + url);
                     return;
@@ -278,3 +278,4 @@ public class MainActivity extends AppCompatActivity {
 
     }
 }
+

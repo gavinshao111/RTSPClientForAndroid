@@ -1,0 +1,574 @@
+package com.leapmotor.gavin.myrtspclient;
+
+import android.Manifest;
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.hardware.display.DisplayManager;
+import android.hardware.display.VirtualDisplay;
+import android.media.Image;
+import android.media.ImageReader;
+import android.media.MediaCodec;
+import android.media.MediaMuxer;
+import android.media.projection.MediaProjection;
+import android.media.projection.MediaProjectionManager;
+import android.os.Build;
+import android.os.Environment;
+import android.os.Handler;
+import android.support.annotation.NonNull;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
+
+import android.os.Bundle;
+import android.util.DisplayMetrics;
+import android.util.Log;
+import android.view.Surface;
+import android.view.View;
+import android.view.WindowManager;
+
+import android.widget.ImageView;
+import android.widget.Toast;
+
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import android.app.AlertDialog;
+import android.content.DialogInterface;
+import android.os.Message;
+
+import android.view.SurfaceView;
+
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
+import android.widget.ListView;
+
+import java.io.FileInputStream;
+
+
+
+public class MainActivity extends Activity  {
+
+    private static String TAG = "MainActivity";
+    private final int REQUEST_CODE_SAVE_IMAGE_FILE = 110;
+
+
+    private ImageView mImageView;
+    private String mImageName;
+    private String mImagePath;
+    private int mScreenDensity;
+    private int mWindowWidth;
+    private int mWindowHeight;
+    private VirtualDisplay mVirtualDisplay;
+    private WindowManager mWindowManager;
+    private ImageReader mImageReader;
+
+    private MediaProjectionManager mMediaProjectionManager;
+    private MediaProjection mMediaProjection;
+
+    private static final String STATE_RESULT_CODE = "result_code";
+    private static final String STATE_RESULT_DATA = "result_data";
+
+    private static final int REQUEST_MEDIA_PROJECTION = 1;
+
+    private int mResultCode;
+    private Intent mResultData;
+    private Bitmap mBitmap;
+
+    // record
+    private MediaCodec mMediaCodec;
+    private MediaMuxer mMuxer;
+
+    private AtomicBoolean mIsQuit = new AtomicBoolean(false);
+
+    private boolean isScreenshot = false;
+
+
+    private static Handler handler;
+    private final static String localFileName = "MyRTSPClient.h264";
+
+    // video rate is 16k/40ms
+    private final static int VideoBufSize = 1024 * 16;
+    private final static int MilliSecondToSleep = 40;
+
+    private final static String url1 = "rtsp://120.26.86.124:8888/realtime/leapmotorNo1/1/realtime.sdp";
+    private final static String url2 = "rtsp://120.26.86.124:8888/record/leapmotorNo1/1/123.sdp";
+    private final static String url3 = "rtsp://120.26.86.124:8888/realtime/1234/1/realtime.sdp";
+    //private final static String url4 = "rtsp://120.27.188.84:8888/record/leapmotorNo1/1/123.sdp";
+
+    private final static String url4 = "rtsp://120.27.188.84:8888/record/leapmotorNo1/1/123.sdp";
+
+    private final static String url5 = "rtsp://120.27.188.84:8888/realtime/1234/1/realtime.sdp";
+    //private final static String url4 = "rtsp://218.204.223.237:554/live/1/66251FC11353191F/e7ooqwcfbqjoo80j.sdp";
+    private final static String Urls[] = new String[]{url1, url2, url3, url4, url5};
+    //Thread RTSPTask;
+    static final boolean DEBUG = false;
+    //static boolean WriteToFile = false;
+
+    private RadioOnClick radioOnClick = new RadioOnClick(0);
+    private ListView areaRadioListView;
+    private CheckBox CBSaveToFile;
+
+    private H264Player h264Player;
+    private VideoReceiver videoReceiver;
+
+    private boolean VideoPlayerNeedExit;
+
+    private Thread RTPReceiverThread;
+    private Thread VideoPlayerThread;
+
+
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        if (savedInstanceState != null) {
+            mResultCode = savedInstanceState.getInt(STATE_RESULT_CODE);
+            mResultData = savedInstanceState.getParcelable(STATE_RESULT_DATA);
+        }
+
+        mImageView = (ImageView) findViewById(R.id.imageView);
+
+        createEnvironment();
+
+
+
+        h264Player = new H264Player((SurfaceView) findViewById(R.id.surfaceView1));
+        findViewById(R.id.BtPlay).setOnClickListener(new RadioClickListener());
+
+        findViewById(R.id.play_local).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (null != VideoPlayerThread && VideoPlayerThread.isAlive())
+                    return;
+
+                StartVideoPlayer(true);
+            }
+        });
+
+        findViewById(R.id.buttonStop).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                VideoPlayerNeedExit = true;
+                videoReceiver.SendStopMsg();
+                Toast.makeText(MainActivity.this, videoReceiver.GetStatus(), Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        CBSaveToFile = ((CheckBox) findViewById(R.id.CBSaveToFile));
+        CBSaveToFile.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener(){
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                if (null != videoReceiver)
+                    videoReceiver.StartOrStopRecord();
+            }
+        });
+
+        findViewById(R.id.ShotBtn).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                isScreenshot = true;
+                if (startScreenCapture()) {
+                    Handler handler = new Handler();
+                    handler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            Log.e(TAG, "start startCapture");
+                            startCapture();
+                        }
+                    }, 200);
+                }
+            }
+        });
+
+        handler = new Handler() {
+            @Override
+            public void handleMessage(Message msg) {
+                Toast.makeText(MainActivity.this, msg.obj.toString(), Toast.LENGTH_SHORT).show();
+                super.handleMessage(msg);
+            }
+        };
+        VideoPlayerNeedExit = false;
+
+
+        videoReceiver = new VideoReceiver(h264Player);
+
+
+    }
+
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (mBitmap != null) {
+            mBitmap.recycle();
+            mBitmap = null;
+        }
+        release();
+        if (mMediaProjection != null) {
+            mMediaProjection.stop();
+        }
+    }
+
+    private void createEnvironment() {
+        mImagePath = Environment.getExternalStorageDirectory().getPath() + "/leapmotor/capture/";
+        mWindowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
+        mWindowWidth = mWindowManager.getDefaultDisplay().getWidth();
+        mWindowHeight = mWindowManager.getDefaultDisplay().getHeight();
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        mWindowManager.getDefaultDisplay().getMetrics(displayMetrics);
+        mScreenDensity = displayMetrics.densityDpi;
+        mImageReader = ImageReader.newInstance(mWindowWidth, mWindowHeight, 0x1, 2);
+
+        mMediaProjectionManager = (MediaProjectionManager)
+                getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+
+    }
+
+    private void startCapture() {
+        mImageName = System.currentTimeMillis() + ".png";
+        Log.i(TAG, "image name is : " + mImageName);
+        Image image = mImageReader.acquireLatestImage();
+        if (image == null) {
+            Log.e(TAG, "image is null.");
+            return;
+        }
+        int width = image.getWidth();
+        int height = image.getHeight();
+        final Image.Plane[] planes = image.getPlanes();
+        final ByteBuffer buffer = planes[0].getBuffer();
+        int pixelStride = planes[0].getPixelStride();
+        int rowStride = planes[0].getRowStride();
+        int rowPadding = rowStride - pixelStride * width;
+        mBitmap = Bitmap.createBitmap(width + rowPadding / pixelStride, height, Bitmap.Config.ARGB_8888);
+        mBitmap.copyPixelsFromBuffer(buffer);
+        mBitmap = Bitmap.createBitmap(mBitmap, 0, 0, width, height);
+        image.close();
+
+        stopScreenCapture();
+        if (mBitmap != null) {
+            Log.d(TAG, "bitmap create success ");
+            if (mImageView != null) {
+                mImageView.setImageBitmap(mBitmap);
+            }
+            saveToFile();
+        }
+    }
+
+    private void saveToFile() {
+        try {
+            File fileFolder = new File(mImagePath);
+            if (!fileFolder.exists())
+                fileFolder.mkdirs();
+            File file = new File(mImagePath, mImageName);
+            if (!file.exists()) {
+                Log.d(TAG, "file create success ");
+                file.createNewFile();
+            }
+            FileOutputStream out = new FileOutputStream(file);
+            mBitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
+            out.flush();
+            out.close();
+            Log.d(TAG, "file save success ");
+            Toast.makeText(this.getApplicationContext(), "Screenshot is done.", Toast.LENGTH_SHORT).show();
+        } catch (IOException e) {
+            Log.e(TAG, e.toString());
+            e.printStackTrace();
+        }
+    }
+
+
+
+    private boolean startScreenCapture() {
+
+        if (mMediaProjection != null) {
+            Log.e("0525", "startScreenCapture 1");
+            setUpVirtualDisplay();
+            return true;
+        } else if (mResultCode != 0 && mResultData != null) {
+            Log.e("0525", "startScreenCapture 2");
+            setUpMediaProjection();
+            setUpVirtualDisplay();
+            return true;
+        } else {
+            Log.e("0525", "startScreenCapture 3");
+            Log.d(TAG, "Requesting confirmation");
+            // This initiates a prompt dialog for the user to confirm screen projection.
+            startActivityForResult(
+                    mMediaProjectionManager.createScreenCaptureIntent(),
+                    REQUEST_MEDIA_PROJECTION);
+            return false;
+        }
+    }
+
+    private void setUpMediaProjection() {
+        mMediaProjection = mMediaProjectionManager.getMediaProjection(mResultCode, mResultData);
+    }
+
+    private void setUpVirtualDisplay() {
+        if (isScreenshot) {
+            mVirtualDisplay = mMediaProjection.createVirtualDisplay("ScreenCapture",
+                    mWindowWidth, mWindowHeight, mScreenDensity,
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                    mImageReader.getSurface(), null, null);
+        }
+    }
+
+    private void stopScreenCapture() {
+        if (mVirtualDisplay != null) {
+            mVirtualDisplay.release();
+            mVirtualDisplay = null;
+        }
+    }
+
+    @Override
+    public void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        if (mResultData != null) {
+            outState.putInt(STATE_RESULT_CODE, mResultCode);
+            outState.putParcelable(STATE_RESULT_DATA, mResultData);
+        }
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQUEST_MEDIA_PROJECTION) {
+            if (resultCode != Activity.RESULT_OK) {
+                Log.d(TAG, "User cancelled");
+                Toast.makeText(this, "User cancelled", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            Log.d(TAG, "Starting screen capture");
+            mResultCode = resultCode;
+            mResultData = data;
+            setUpMediaProjection();
+            setUpVirtualDisplay();
+            Log.e("0525", "onActivityResult 1");
+            if (isScreenshot) {
+                Handler handler = new Handler();
+                handler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        Log.e(TAG, "start startCapture");
+                        startCapture();
+                    }
+                }, 200);
+
+            }
+
+            Log.e("0525", "onActivityResult 2");
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        switch (requestCode) {
+            case REQUEST_CODE_SAVE_IMAGE_FILE: {
+                // If request is cancelled, the result arrays are empty.
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // permission was granted, yay! Do the
+                    // contacts-related task you need to do.
+                    if (isScreenshot)
+                        saveToFile();
+
+                } else {
+                    // permission denied, boo! Disable the
+                    // functionality that depends on this permission.
+                    Toast.makeText(this.getApplicationContext(), "Permission denied", Toast.LENGTH_SHORT).show();
+                }
+                break;
+            }
+        }
+    }
+
+
+    private void release() {
+        mIsQuit.set(false);
+        Log.i(TAG, " release() ");
+        if (mMediaCodec != null) {
+            mMediaCodec.stop();
+            mMediaCodec.release();
+            mMediaCodec = null;
+        }
+        if (mVirtualDisplay != null) {
+            mVirtualDisplay.release();
+            mVirtualDisplay = null;
+        }
+        if (mMuxer != null) {
+            mMuxer.stop();
+            mMuxer.release();
+            mMuxer = null;
+        }
+    }
+
+
+
+
+    @Override
+    public void onBackPressed() {
+        VideoPlayerNeedExit = true;
+        videoReceiver.SendStopMsg();
+
+        super.onBackPressed();
+    }
+
+    class RadioClickListener implements View.OnClickListener {
+        @Override
+        public void onClick(View v) {
+
+            if (null != RTPReceiverThread && RTPReceiverThread.isAlive())  {
+                return;
+            }
+
+            AlertDialog ad = new AlertDialog.Builder(MainActivity.this).setTitle("Choose A URL:")
+                    .setSingleChoiceItems(Urls, radioOnClick.getIndex(), radioOnClick).create();
+            areaRadioListView = ad.getListView();
+            ad.show();
+        }
+    }
+
+    class RadioOnClick implements DialogInterface.OnClickListener {
+        public RadioOnClick(int index) {
+            this.index = index;
+        }
+
+        public int getIndex() {
+            return index;
+        }
+
+        public void setIndex(int index) {
+            this.index = index;
+        }
+
+        public void onClick(DialogInterface dialogInterface, int whichButton) {
+
+            setIndex(whichButton);
+
+            Toast.makeText(MainActivity.this, "Use URL: " + Urls[index], Toast.LENGTH_LONG).show();
+            StartRTSPClient(Urls[index]);
+
+            //Toast.makeText(MainActivity.this, "Playing h264 stream...", Toast.LENGTH_SHORT).show();
+            //StartVideoPlayer(false);
+
+            dialogInterface.dismiss();
+        }
+
+        private int index;
+
+    }
+
+
+    private void StartRTSPClient(final String url) {
+        RTPReceiverThread = new Thread() {
+            public void run() {
+                Thread.currentThread().setName("videoReceiver");
+                System.out.println("[DEBUG] Thread " + Thread.currentThread().getName() + " created.");
+
+                if (!videoReceiver.Initialize(url)) {
+                    System.out.println("Initializer error. url: " + url);
+                    SendMsg("Initializer error. url: " + url);
+                    return;
+                }
+
+                videoReceiver.connect();
+                System.out.println("RTSP Client existed.");
+                SendMsg("RTSP Client existed.");
+            }
+        };
+        RTPReceiverThread.start();
+    }
+
+    private void StartVideoPlayer(final boolean PlayLocalVideo) {
+        VideoPlayerThread = new Thread() {
+            public void run() {
+
+                Thread.currentThread().setName("Player");
+                System.out.println("[DEBUG] Thread " + Thread.currentThread().getName() + " created.");
+                VideoPlayer videoPlayer = new VideoPlayer();
+                videoPlayer.PlayVideo(PlayLocalVideo);
+                System.out.println("Video Player existed.");
+                SendMsg("Video Player existed.");
+            }
+        };
+        VideoPlayerThread.start();
+    }
+
+    public static void SendMsg(String s) {
+        Message message = Message.obtain();
+        message.obj = s;
+        handler.sendMessage(message);
+    }
+
+    public class VideoPlayer {
+
+        private void PlayVideo(final boolean playLocal) {
+            try {
+                if (playLocal) {
+                    ByteBuffer VideoBuffer = ByteBuffer.allocate(VideoBufSize);
+                    File FileLocalH264 = new File(Environment.getExternalStorageDirectory(), localFileName);
+                    if (!FileLocalH264.exists()) {
+                        System.out.println("[Player] Local file " + localFileName + " is not existing.");
+                        SendMsg("Local file " + localFileName + " is not existing.");
+                    } else {
+                        FileInputStream fisLocalH264 = new FileInputStream(FileLocalH264);
+
+                        for (int i = 0; !VideoPlayerNeedExit; i++) {
+                            if (-1 == fisLocalH264.read(VideoBuffer.array(), 0, VideoBuffer.capacity()))
+                                break;
+                            h264Player.pushData(VideoBuffer.array(), VideoBuffer.capacity());
+                            Thread.sleep(40);
+                            //System.out.println(i);
+                        }
+                        VideoPlayerNeedExit = false;
+                    }
+                } else {
+//                    LockForBuf2.lock();
+//                    Thread.sleep(100);
+//                    ByteBuffer ReadBufRef = Buffer2;
+//                    ByteBuffer TmpBuf = ByteBuffer.allocate(VideoBufSize);
+//                    int SizeToCopy;
+//                    //System.out.println("[Player] First time to get read buf, Lock2 got, waiting for Lock1.");
+//                    ReadBufRef = VideoReceiver.SwapBuf(Buffer1, Buffer2, ReadBufRef, LockForBuf1, LockForBuf2);
+//                    for (; !VideoPlayerNeedExit; ) {
+//
+//                        if (VideoBufSize > ReadBufRef.remaining()) {
+//                            TmpBuf.put(ReadBufRef);
+//                            //h264Player.pushData(TmpBuf, ReadBufRef.remaining());
+//                            ReadBufRef.clear();
+//                            ReadBufRef = VideoReceiver.SwapBuf(Buffer1, Buffer2, ReadBufRef, LockForBuf1, LockForBuf2);
+//                        }
+//                        SizeToCopy = TmpBuf.remaining();
+//                        ReadBufRef.get(TmpBuf.array(), TmpBuf.position(), SizeToCopy);
+//                        TmpBuf.clear();
+//
+//                        h264Player.pushData(TmpBuf.array(), VideoBufSize);
+//                        Thread.sleep(MilliSecondToSleep);
+//                        //System.out.println(i);
+//
+//
+//                        //System.out.println("[Player] Release lock, play ok.");
+//                        //break;
+//                    }
+//                    VideoReceiver.UnLock(Buffer1, Buffer2, ReadBufRef, LockForBuf1, LockForBuf2);
+//                    VideoPlayerNeedExit = false;
+                }
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            //h264Player.pushData(src, src.length);
+        }
+
+    }
+
+
+
+}

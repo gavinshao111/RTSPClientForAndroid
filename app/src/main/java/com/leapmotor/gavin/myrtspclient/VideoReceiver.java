@@ -38,7 +38,7 @@ public class VideoReceiver {
     private boolean SaveToFile;
     private boolean DEBUG;
     //private StringBuilder LogBuffer;
-    static private Handler handler;
+    private Handler handler;
     private boolean ExitCmdFromUI;
 
     private String trackInfo;
@@ -58,7 +58,7 @@ public class VideoReceiver {
     private int count;
     private H264Player h264Player;
     private ByteBuffer VideoStartBuffer;
-    private static int Status;
+    private int Status;
 
     private enum EnumRTSPStatus {
         init, options, describe, setup, play, pause, teardown
@@ -93,7 +93,7 @@ public class VideoReceiver {
         Status = 0;
     }
 
-    public Boolean Initializer(String RTSPUrl) {
+    public Boolean Initialize(String RTSPUrl) {
         try {
             ExitCmdFromUI = false;
             this.RTSPUrl = RTSPUrl.trim();
@@ -543,7 +543,7 @@ public class VideoReceiver {
         return true;
     }
 
-    public static void SendStopMsg(){
+    public void SendStopMsg(){
         if(null == handler)
             return;
         Message message = Message.obtain();
@@ -551,7 +551,7 @@ public class VideoReceiver {
         handler.sendMessage(message);
     }
 
-    public static String GetStatus(){
+    public String GetStatus(){
         switch (Status){
             case 0: return "Init.";
             case 1: return "RTSP Complete.";
